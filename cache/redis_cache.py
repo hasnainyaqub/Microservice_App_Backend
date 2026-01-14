@@ -1,35 +1,38 @@
-import redis.asyncio as redis
+from typing import List, Dict, Any, Optional
 import json
-from datetime import datetime
+import redis.asyncio as redis
 from core.config import settings
 
-# === Initialize Redis Client ===
-redis_client = redis.Redis(
-    host=settings.REDIS_HOST,
-    port=settings.REDIS_PORT,
-    decode_responses=True
-)
+redis_client = None
 
-# === Default TTL (time-to-live) for cached items in seconds ===
-TTL = settings.REDIS_TTL
+async def get_redis():
+    global redis_client
+    if redis_client is None:
+        redis_client = redis.Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            db=0,
+            decode_responses=True
+        )
+    return redis_client
 
-# === JSON Serializer for Non-Serializable Objects ===
-def json_serializer(obj):
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    raise TypeError(f"Type {type(obj)} not serializable")
+async def get_menu_from_cache(branch: int) -> Optional[List[Dict[str, Any]]]:
+    try:
+        r = await get_redis()
+        data = await r.get(f"menu:{branch}")
+        if data:
+            return json.loads(data)
+    except Exception as e:
+        print(f"Redis get error: {e}")
+    return None
 
-# === Retrieve Menu from Redis Cache ===
-async def get_menu_from_cache(branch: int):
-    key = f"menu:{branch}"
-    data = await redis_client.get(key)
-    return json.loads(data) if data else None
-
-# === Store Menu in Redis Cache ===
-async def store_menu_in_cache(branch: int, data):
-    key = f"menu:{branch}"
-    await redis_client.set(
-        key,
-        json.dumps(data, default=json_serializer),
-        ex=TTL
-    )
+async def store_menu_in_cache(branch: int, menu: List[Dict[str, Any]]):
+    try:
+        r = await get_redis()
+        await r.setex(
+            f"menu:{branch}", 
+            settings.REDIS_TTL, 
+            json.dumps(menu, default=str)
+        )
+    except Exception as e:
+        print(f"Redis store error: {e}")

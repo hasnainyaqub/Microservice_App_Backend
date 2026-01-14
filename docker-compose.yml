@@ -1,0 +1,43 @@
+
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8001:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - MYSQL_HOST=db
+      - MYSQL_PORT=3306
+      - MYSQL_USER=dark
+      - MYSQL_PASSWORD=okboss
+      - MYSQL_DB=saylani_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_DATABASE: saylani_db
+      MYSQL_USER: dark
+      MYSQL_PASSWORD: okboss
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:alpine
+    restart: always
+    ports:
+      - "6380:6379"
+
+volumes:
+  mysql_data:
