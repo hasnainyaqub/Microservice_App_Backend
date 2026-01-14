@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-dotenv
+aiomysql
+redis
+pydantic
+requests
+langchain
+langchain-core
+langchain-groq

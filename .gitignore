@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+
+# FastAPI / Python tools
+.pytest_cache/
+.mypy_cache/
+ruff_cache/
+
+# Database / cache
+*.sqlite3
