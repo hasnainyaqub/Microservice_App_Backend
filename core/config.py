@@ -8,11 +8,9 @@ class Settings:
     # DATABASE_URL: str | None = os.getenv("DATABASE_URL")
 
     # # === MySQL (optional, keep only if really needed) ===
-    MYSQL_HOST: str | None = os.getenv("MYSQL_HOST")
-    MYSQL_PORT: int = int(os.getenv("MYSQL_PORT", 3306))
-    MYSQL_USER: str | None = os.getenv("MYSQL_USER")
-    MYSQL_PASSWORD: str | None = os.getenv("MYSQL_PASSWORD")
-    MYSQL_DB: str | None = os.getenv("MYSQL_DB")
+    # === PostgreSQL (Supabase / Railway) ===
+    # DATABASE_URL: str | None = os.getenv("DATABASE_URL")
+
 
     # # === Redis ===
     REDIS_HOST: str | None = os.getenv("REDIS_HOST")
