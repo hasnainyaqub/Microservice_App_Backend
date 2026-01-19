@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes.recommend import router as recommend_router
+from api.routes.chatbot import router as chatbot_router
 
 # === Initialize FastAPI App ===
 app = FastAPI(title="Restaurant Recommendation API")
@@ -18,10 +19,10 @@ def health():
 
 # === Configure CORS Middleware ===
 app.add_middleware(
-    CORSMiddleware, 
+    CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-         "http://localhost:3001",
+        "http://localhost:3001",
         "http://192.168.1.2:3000",
         "http://192.168.1.2:3001",
         "http://192.168.1.11:3000",
@@ -35,5 +36,6 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# === Include Recommendation Router ===
+# === Include Routers ===
 app.include_router(recommend_router, prefix="/api")
+app.include_router(chatbot_router, prefix="/api")
