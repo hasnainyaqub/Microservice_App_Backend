@@ -36,3 +36,47 @@ async def store_menu_in_cache(branch: int, menu: List[Dict[str, Any]]):
         )
     except Exception as e:
         print(f"Redis store error: {e}")
+
+# === In-Memory Cache for Reviews Menu (Redis-style logic) ===
+_reviews_menu_cache: Optional[List[Dict[str, Any]]] = None
+_cache_key = "reviews_menu"
+
+async def get_reviews_menu_from_cache() -> Optional[List[Dict[str, Any]]]:
+    """
+    Get menu with reviews from cache.
+    Uses in-memory cache (Redis-style logic).
+    """
+    global _reviews_menu_cache
+    try:
+        # Try Redis first if available
+        r = await get_redis()
+        data = await r.get(_cache_key)
+        if data:
+            return json.loads(data)
+    except Exception:
+        # Fallback to in-memory cache
+        pass
+    
+    # Return in-memory cache if Redis fails
+    return _reviews_menu_cache
+
+async def store_reviews_menu_in_cache(menu: List[Dict[str, Any]]):
+    """
+    Store menu with reviews in cache.
+    Uses in-memory cache (Redis-style logic).
+    """
+    global _reviews_menu_cache
+    try:
+        # Try Redis first if available
+        r = await get_redis()
+        await r.setex(
+            _cache_key,
+            settings.REDIS_TTL,
+            json.dumps(menu, default=str)
+        )
+    except Exception:
+        # Fallback to in-memory cache
+        pass
+    
+    # Store in in-memory cache as fallback
+    _reviews_menu_cache = menu

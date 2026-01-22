@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes.recommend import router as recommend_router
 from api.routes.chatbot import router as chatbot_router
+from api.routes.reviews import router as reviews_router
 
 # === Initialize FastAPI App ===
 app = FastAPI(title="Restaurant Recommendation API")
@@ -39,3 +40,4 @@ app.add_middleware(
 # === Include Routers ===
 app.include_router(recommend_router, prefix="/api")
 app.include_router(chatbot_router, prefix="/api")
+app.include_router(reviews_router, prefix="/api")

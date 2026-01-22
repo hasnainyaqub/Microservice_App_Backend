@@ -5,14 +5,13 @@ from typing import List, Dict, Any
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 
-from db.database import fetch_menu, fetch_recent_orders
+from db.database import fetch_menu
 from cache.redis_cache import get_menu_from_cache, store_menu_in_cache
-from utils.scoring import mood_match, spice_match
 from core.config import settings
 
 # === Configuration ===
 
-# Meal-specific priority lists for recommendation
+# Meal-specific category lists for filtering
 MEAL_PRIORITY = {
     "breakfast": [
         "Sandwich", "Omelette", "Paratha", "Tea", "Coffee", "Milkshake", "Smoothie", "Pudding", "Muffin", "Tart"
@@ -25,26 +24,6 @@ MEAL_PRIORITY = {
     ],
 }
 
-# Default priority if meal time is unknown
-DEFAULT_PRIORITY = [
-    "Pizza", "Burger", "Rice", "BBQ", "Dessert", "Pasta", "Sandwich", "Salad", "Fries", "Wings"
-]
-
-# Bundle templates based on number of people
-BUNDLE_TEMPLATES = {
-    "solo": {"main": 1, "side": 1, "drink": 1},
-    "couple": {"main": 1, "side": 2, "drink": 2},
-    "family": {"main": 2, "side": 4, "drink": 4},
-}
-
-MOOD_EXCLUSION_RULES = {
-    "healthy": {
-        "exclude_categories": {
-            "Pizza", "Burger", "BBQ", "Dessert", "Fries",
-            "Onion Rings", "Nachos"
-        }
-    }
-}
 
 # === Internal Question Wrapper ===
 class InternalQuestion:
@@ -90,62 +69,31 @@ def get_budget_range(peoples: int, budget: str, mood: str):
     final = base_budget * multiplier
     return int(final * 0.7), int(final), int(final * 1.3)
 
-# === Filter Items Based on Meal Time and Preferences ===
+# === Filter Items Based on Meal Time Only ===
 def filter_items_by_meal_time(
     menu: List[Dict],
-    meal_time: str,
-    mood: str,
-    spice_lvl: str,
-    avoid_anything: str,
-    popularity: Dict[str, int]
+    meal_time: str
 ) -> List[Dict]:
     """
-    Manually filter items based on meal time and other preferences.
-    Returns filtered and scored items.
+    Filter items based on meal time only.
+    Returns items that match meal-specific categories.
     """
     # Get category priority for meal time
-    if mood == "healthy":
-        category_priority = [
-            "Salad", "Grilled", "Wrap", "Sandwich", "Soup", "Smoothie"
-        ]
-    else:
-        category_priority = MEAL_PRIORITY.get(meal_time, DEFAULT_PRIORITY)
+    category_priority = MEAL_PRIORITY.get(meal_time)
     
-    # Apply mood exclusion rules
-    rules = MOOD_EXCLUSION_RULES.get(mood, {})
-    excluded_categories = rules.get("exclude_categories", set())
+    # If meal time is not recognized, return all items
+    if not category_priority:
+        return menu
     
-    # Filter and score items
+    # Filter items by meal time categories
     filtered_items = []
-    
     for item in menu:
-        # Exclude based on mood rules
-        if item["category"] in excluded_categories:
-            continue
-        
-        # Exclude based on dietary restrictions
-        if avoid_anything:
-            avoid_lower = avoid_anything.lower()
-            item_name_lower = item["name"].lower()
-            item_category_lower = item.get("category", "").lower()
-            if avoid_lower in item_name_lower or avoid_lower in item_category_lower:
-                continue
-        
-        # Score items based on mood, spice, and popularity
-        score = (
-            mood_match(item["name"], mood) * 2
-            + spice_match(item["name"], spice_lvl) * 3
-            + popularity.get(item["name"], 0)
-        )
-        
-        # Prioritize items from meal-specific categories
         if item["category"] in category_priority:
-            score += 5
-        
-        filtered_items.append({**item, "score": score})
+            filtered_items.append(item)
     
-    # Sort by score descending
-    filtered_items.sort(key=lambda x: x["score"], reverse=True)
+    # If no items found in priority categories, return all items
+    if not filtered_items:
+        return menu
     
     return filtered_items
 
@@ -161,8 +109,7 @@ def items_to_json(items: List[Dict]) -> str:
             "name": item["name"],
             "category": item["category"],
             "price": item["price"],
-            "serves": item["serves"],
-            "score": item.get("score", 0)
+            "serves": item["serves"]
         })
     
     return json.dumps(json_items, indent=2)
@@ -188,13 +135,22 @@ async def get_groq_recommendations(
     prompt = ChatPromptTemplate.from_messages([
         ("system", """You are a restaurant recommendation expert. Your task is to analyze menu items and user preferences to suggest meal deals.
 
-Given filtered menu items and user preferences, recommend 3 different meal deals that:
-1. Fit within the budget constraints
-2. Match the user's preferences (mood, spice level, dietary restrictions)
-3. Provide variety and good value
-4. Cover the required number of people
-5. Don't suggest items that are not in the filtered menu items.
-6. Don't suggest items with the number of people like if 4 people balance the meal don't suggest 4 people items. like (large pizza will eat by 2/3 people so do like that don't suggest food for each person make balance.)
+Given menu items filtered by meal time and user preferences, recommend 3 different meal deals that:
+1. Fit within the budget constraints (ideal: {ideal_budget} PKR, maximum: {hard_budget} PKR)
+2. Match the user's mood/craving type: {mood}
+3. Match the user's spice level preference: {spice_lvl}
+4. Respect dietary restrictions: {avoid_anything}
+5. Provide variety and good value
+6. Cover the required number of people: {peoples}
+7. Are appropriate for meal time: {meal_time}
+8. Don't suggest items that are not in the provided menu items
+9. Don't suggest items with the number of people like if 4 people balance the meal don't suggest 4 people items. Like (large pizza will eat by 2/3 people so do like that don't suggest food for each person make balance.)
+
+IMPORTANT FILTERING RULES:
+- If mood is "healthy", exclude items from categories like Pizza, Burger, BBQ, Dessert, Fries, Onion Rings, Nachos. Prefer Salad, Grilled, Wrap, Sandwich, Soup, Smoothie categories.
+- If dietary restrictions are specified, exclude any items containing those restrictions in name or category.
+- Match spice level preferences (mild, medium, hot, extra hot) based on item names and descriptions.
+- Prioritize items that match the meal time categories but also consider all preferences.
 
 Return your recommendations in JSON format with this structure:
 {{
@@ -218,8 +174,9 @@ Be practical and consider:
 - Serving sizes (serves field)
 - Price per item
 - Category variety
-- User preferences
-- Budget constraints"""),
+- User preferences (mood, spice, dietary restrictions)
+- Budget constraints
+- Meal time appropriateness"""),
         ("human", """User Preferences:
 - Number of people: {peoples}
 - Meal time: {meal_time}
@@ -230,10 +187,10 @@ Be practical and consider:
 - Ideal budget: {ideal_budget} PKR
 - Maximum budget: {hard_budget} PKR
 
-Filtered Menu Items (JSON):
+Menu Items Filtered by Meal Time (JSON):
 {filtered_items}
 
-Please recommend 3 different meal deals based on the above information. Return only valid JSON."""),
+Please recommend 3 different meal deals based on the above information. Apply all filtering rules (mood, spice, dietary restrictions) and return only valid JSON."""),
     ])
     
     # Format prompt
@@ -320,103 +277,19 @@ def build_deals_from_groq_response(
                             "explanation": rec.get("explanation", "")
                         })
         
-        # If we don't have 3 deals, fill with fallback deals
-        if len(final_deals) < 3:
-            final_deals.extend(build_fallback_deals(
-                filtered_items, peoples, ideal_budget, hard_budget, len(final_deals)
-            ))
-        
         return final_deals[:3]
     
     except (json.JSONDecodeError, KeyError, Exception) as e:
         print(f"Error parsing Groq response: {e}")
         print(f"Response was: {groq_response}")
-        # Fallback to manual deal building
-        return build_fallback_deals(filtered_items, peoples, ideal_budget, hard_budget, 0)
-
-# === Build Fallback Deals (Manual Method) ===
-def build_fallback_deals(
-    filtered_items: List[Dict],
-    peoples: int,
-    ideal_budget: int,
-    hard_budget: int,
-    start_deal_num: int = 0
-) -> List[Dict]:
-    """
-    Build deals manually as fallback if ChatGroq fails.
-    """
-    deals = []
-    
-    # Group items by category
-    grouped = {}
-    for item in filtered_items:
-        grouped.setdefault(item["category"], []).append(item)
-    
-    # Get category priority
-    categories = list(grouped.keys())
-    
-    for shift in range(3):
-        if start_deal_num + shift >= 3:
-            break
-            
-        deal_items = []
-        total_cost = 0
-        total_coverage = 0
-        
-        rotated_categories = categories[shift:] + categories[:shift]
-        
-        for category in rotated_categories:
-            if category not in grouped:
-                continue
-            
-            items = grouped[category]
-            if not items:
-                continue
-            
-            item = items[0]  # Take top item from category
-            
-            remaining_people = max(peoples - total_coverage, 0)
-            if remaining_people <= 0:
-                break
-            
-            qty = math.ceil(remaining_people / item["serves"])
-            qty = max(1, min(qty, 3))  # Limit quantity
-            
-            coverage = qty * item["serves"]
-            cost = qty * item["price"]
-            
-            if total_cost + cost > hard_budget:
-                continue
-            
-            deal_items.append({
-                "name": item["name"],
-                "category": item["category"],
-                "qty": qty,
-                "serves_each": item["serves"],
-                "unit_price": item["price"],
-                "total_price": cost,
-            })
-            
-            total_cost += cost
-            total_coverage += coverage
-            
-            if total_coverage >= peoples and len(deal_items) >= 2:
-                break
-        
-        if deal_items and total_coverage >= peoples:
-            deals.append({
-                "deal_number": start_deal_num + shift + 1,
-                "items": deal_items,
-                "total_cost": total_cost,
-            })
-    
-    return deals
+        # Return empty list if Groq fails - no fallback
+        return []
 
 # === Generate Recommendations ===
 async def generate_recommendation(branch: int, q: InternalQuestion):
     """
     Main recommendation generation function.
-    Uses ChatGroq for intelligent recommendations after manual filtering.
+    Uses ChatGroq for intelligent recommendations after meal time filtering.
     """
     _, ideal_budget, hard_budget = get_budget_range(
         q.peoples, q.budget, q.mood
@@ -428,48 +301,30 @@ async def generate_recommendation(branch: int, q: InternalQuestion):
         menu = await fetch_menu(branch)
         await store_menu_in_cache(branch, menu)
 
-    # Fetch popularity data for scoring
-    popularity = await fetch_recent_orders(branch)
-
-    # === STEP 1: Manual filtering based on meal time and preferences ===
+    # === STEP 1: Manual filtering based on meal time only ===
     filtered_items = filter_items_by_meal_time(
         menu=menu,
-        meal_time=q.meal_time,
-        mood=q.mood,
-        spice_lvl=q.spice_lvl,
-        avoid_anything=q.avoid_anything,
-        popularity=popularity
+        meal_time=q.meal_time
     )
-    
-    # Limit filtered items to top 50 for efficiency
-    filtered_items = filtered_items[:50]
     
     # === STEP 2: Convert filtered items to JSON ===
     filtered_items_json = items_to_json(filtered_items)
     
     # === STEP 3: Get recommendations from ChatGroq ===
-    try:
-        groq_response = await get_groq_recommendations(
-            filtered_items_json=filtered_items_json,
-            preferences=q,
-            ideal_budget=ideal_budget,
-            hard_budget=hard_budget
-        )
-        
-        # === STEP 4: Build final deals from ChatGroq response ===
-        deals = build_deals_from_groq_response(
-            groq_response=groq_response,
-            filtered_items=filtered_items,
-            peoples=q.peoples,
-            ideal_budget=ideal_budget,
-            hard_budget=hard_budget
-        )
-        
-        return deals
+    groq_response = await get_groq_recommendations(
+        filtered_items_json=filtered_items_json,
+        preferences=q,
+        ideal_budget=ideal_budget,
+        hard_budget=hard_budget
+    )
     
-    except Exception as e:
-        print(f"Error with ChatGroq: {e}")
-        # Fallback to manual deal building
-        return build_fallback_deals(
-            filtered_items, q.peoples, ideal_budget, hard_budget, 0
-        )
+    # === STEP 4: Build final deals from ChatGroq response ===
+    deals = build_deals_from_groq_response(
+        groq_response=groq_response,
+        filtered_items=filtered_items,
+        peoples=q.peoples,
+        ideal_budget=ideal_budget,
+        hard_budget=hard_budget
+    )
+    
+    return deals
