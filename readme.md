@@ -9,15 +9,13 @@ A high-performance backend service built with **FastAPI**, designed to provide f
 - **FastAPI**: Modern, fast (high-performance) web framework.
 - **CSV Data Source**: Simple file-based database for Menus and Orders (`data/menu.csv`, `data/orders.csv`).
 - **Redis Caching**: Caches menu data to reduce file I/O and improve response times.
-- **Dockerized**: Easy deployment with Docker and Docker Compose.
 - **LangChain + Groq**: powered recommendations.
 
 ---
 
 ## 🛠️ Prerequisites
 
-- **Docker** & **Docker Compose** (Recommended)
-- *OR* Python 3.12+ and a running Redis instance.
+- Python 3.12+ and a running Redis instance.
 
 ---
 
@@ -31,7 +29,7 @@ HOST=0.0.0.0
 PORT=8000
 
 # Redis Configuration
-REDIS_HOST=redis      # Use 'localhost' if running locally without Docker
+REDIS_HOST=localhost      # Redis Host
 REDIS_PORT=6379
 REDIS_TTL=300         # Cache Time-To-Live in seconds
 
@@ -41,27 +39,7 @@ GROQ_API_KEY=your_groq_api_key_here
 
 ---
 
-## 🐳 Running with Docker (Recommended)
 
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/hasnainyaqub/Microservice_App_Backend
-    cd Microservice_App_Backend 
-    ```
-
-2.  **Start the services**:
-    ```bash
-    docker-compose up --build
-    ```
-
-    This will start:
-    -   **Backend**: Available at `http://localhost:8001` (mapped from container port 8000).
-    -   **Redis**: Available internally to the backend.
-
-3.  **Stop the services**:
-    ```bash
-    docker-compose down
-    ```
 
 ---
 
@@ -144,7 +122,5 @@ curl -X POST http://localhost:8001/api/recommend/1 \
 ├── data/            # CSV data files (menu.csv, orders.csv)
 ├── db/              # Database/Data access layer
 ├── main.py          # Application entry point
-├── Dockerfile       # Docker image definition
-├── docker-compose.yml # Container orchestration
 └── requirements.txt # Python dependencies
 ```
