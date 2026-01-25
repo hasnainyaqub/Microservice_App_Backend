@@ -7,7 +7,6 @@ requests
 langchain
 langchain-core
 langchain-groq
-langchain-embeddings
 langchain-huggingface
 langchain-community
 transformers
