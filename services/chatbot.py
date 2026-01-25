@@ -1,3 +1,5 @@
+from collections import deque
+from typing import Dict
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -8,12 +10,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Embeddings
+# ================= Embeddings =================
 embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
-# Load vector DB
+# ================= Vector DB =================
 vectorstore = FAISS.load_local(
     "./vector_db",
     embeddings,
@@ -22,13 +24,13 @@ vectorstore = FAISS.load_local(
 
 retriever = vectorstore.as_retriever(search_kwargs={"k": 8})
 
-# LLM
+# ================= LLM =================
 llm = ChatGroq(
     model="groq/compound-mini",
     temperature=0
 )
 
-# Prompt
+# ================= Prompt =================
 prompt = ChatPromptTemplate.from_messages([
     (
         "system",
@@ -42,7 +44,7 @@ prompt = ChatPromptTemplate.from_messages([
     )
 ])
 
-# Runnable chain
+# ================= Runnable Chain =================
 chatbot_chain = (
     {
         "context": retriever,
@@ -53,6 +55,35 @@ chatbot_chain = (
     | StrOutputParser()
 )
 
+# ================= Memory =================
+chat_history = deque(maxlen=5)
+message_id = 0
 
-def chat(query: str) -> str:
-    return chatbot_chain.invoke(query)
+
+def chat(query: str) -> Dict:
+    global message_id
+
+    user_message = {
+        "id": message_id,
+        "role": "user",
+        "message": query
+    }
+    message_id += 1
+
+    reply_text = chatbot_chain.invoke(query)
+
+    bot_message = {
+        "id": message_id,
+        "role": "bot",
+        "reply": reply_text
+    }
+    message_id += 1
+
+    chat_history.append(user_message)
+    chat_history.append(bot_message)
+
+    return {
+        "user": user_message,
+        "bot": bot_message,
+        "last_5_messages": list(chat_history)
+    }
