@@ -9,4 +9,4 @@ langchain-core
 langchain-groq
 langchain-huggingface
 langchain-community
-transformers
+sentence-transformers
