@@ -1,5 +1,5 @@
-from collections import deque
-from typing import Dict
+from typing import List, Dict
+from datetime import datetime
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -34,7 +34,7 @@ llm = ChatGroq(
 prompt = ChatPromptTemplate.from_messages([
     (
         "system",
-        "You are a helpful restaurant assistant. "
+        "You are a helpful restaurant assistant."
         "Answer strictly using the provided context. "
         "If the answer is not in the context, say you do not have that information."
     ),
@@ -55,35 +55,25 @@ chatbot_chain = (
     | StrOutputParser()
 )
 
-# ================= Memory =================
-chat_history = deque(maxlen=5)
-message_id = 0
 
 
-def chat(query: str) -> Dict:
-    global message_id
+# ================= Chat Function =================
+from typing import List
+from datetime import datetime
+from datetime import datetime, timezone
 
-    user_message = {
-        "id": message_id,
-        "role": "user",
-        "message": query
-    }
-    message_id += 1
+datetime.now(timezone.utc).isoformat()
 
-    reply_text = chatbot_chain.invoke(query)
+def chat(new_message: str, history: List) -> dict:
+    reply_text = chatbot_chain.invoke(new_message)
 
-    bot_message = {
-        "id": message_id,
-        "role": "bot",
-        "reply": reply_text
-    }
-    message_id += 1
-
-    chat_history.append(user_message)
-    chat_history.append(bot_message)
+    last_id = history[-1].id if history else 0
 
     return {
-        "user": user_message,
-        "bot": bot_message,
-        "last_5_messages": list(chat_history)
-    }
+    "id": last_id + 1,
+    "role": "bot",
+    "message": reply_text,
+    "time": datetime.now(timezone.utc).isoformat()
+}
+
+
